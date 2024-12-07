@@ -26,7 +26,7 @@
             margin-bottom: 20px;
         }
         .video-frame {
-            width: 80%; /* Adjusting width for better visibility */
+            width: 100%;
             height: auto;
             max-height: 400px;
         }
@@ -35,6 +35,7 @@
             height: auto;
             border: 2px solid #28a745;
             border-radius: 8px;
+            margin-top: 20px;
         }
         h1 {
             color: #fff;
@@ -75,6 +76,15 @@
         <h1>Eye Pressure Test</h1>
         <p class="text-muted">Ensure the camera is focused on your eye before capturing.</p>
 
+        <!-- Camera Selection -->
+        <div class="form-group">
+            <label for="camera-select">Select Camera</label>
+            <select id="camera-select" class="form-control">
+                <option value="front">Front Camera</option>
+                <option value="back">Back Camera</option>
+            </select>
+        </div>
+
         <div class="video-container">
             <video id="video" class="video-frame" autoplay></video>
         </div>
@@ -90,18 +100,59 @@
         <audio id="alert-sound" src="static/images/alert-sound.mp3" preload="auto"></audio>
 
         <script>
-            // Access the webcam and start video feed
-            navigator.mediaDevices.getUserMedia({ video: true })
-                .then(function(stream) {
-                    const video = document.getElementById('video');
-                    video.srcObject = stream;
-                })
-                .catch(function(err) {
-                    console.error("Error accessing camera: ", err);
-                    document.getElementById('alert-message').innerText = "Error accessing the camera. Please check permissions.";
-                    document.getElementById('alert-message').style.display = "block";
-                });
-        
+            let currentStream = null;
+            let currentDeviceId = null;
+
+            // Function to access camera based on selection
+            function startCamera(cameraType) {
+                const video = document.getElementById('video');
+                
+                navigator.mediaDevices.enumerateDevices()
+                    .then(devices => {
+                        let deviceId = null;
+                        devices.forEach(device => {
+                            if (device.kind === 'videoinput') {
+                                if (cameraType === 'front' && device.label.toLowerCase().includes('front')) {
+                                    deviceId = device.deviceId;
+                                } else if (cameraType === 'back' && device.label.toLowerCase().includes('back')) {
+                                    deviceId = device.deviceId;
+                                }
+                            }
+                        });
+
+                        if (!deviceId) {
+                            document.getElementById('alert-message').innerText = `No ${cameraType} camera found.`;
+                            document.getElementById('alert-message').style.display = 'block';
+                            return;
+                        }
+
+                        if (currentStream) {
+                            currentStream.getTracks().forEach(track => track.stop());
+                        }
+
+                        navigator.mediaDevices.getUserMedia({
+                            video: { deviceId: { exact: deviceId } }
+                        })
+                        .then(function(stream) {
+                            video.srcObject = stream;
+                            currentStream = stream;
+                            currentDeviceId = deviceId;
+                            document.getElementById('alert-message').style.display = 'none';
+                        })
+                        .catch(function(err) {
+                            console.error("Error accessing camera: ", err);
+                            document.getElementById('alert-message').innerText = "Error accessing the camera. Please check permissions.";
+                            document.getElementById('alert-message').style.display = "block";
+                        });
+                    });
+            }
+
+            document.getElementById('camera-select').addEventListener('change', function() {
+                startCamera(this.value);
+            });
+
+            startCamera('front');
+
             // Capture and send image for analysis
             document.getElementById('capture-btn').addEventListener('click', function() {
                 const video = document.getElementById('video');
@@ -113,7 +164,6 @@
         
                 const dataURL = canvas.toDataURL('image/jpeg');
         
-                // Send the captured image to the server
                 fetch('/capture', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -121,16 +171,14 @@
                 })
                 .then(response => response.json())
                 .then(data => {
-                    if (data.pressure !== null) {
-                        // Display the estimated eye pressure and processed image
+                    if (data.pressure) {
                         document.getElementById('result').innerHTML = `
                             <h4>Estimated Eye Pressure</h4>
-                            <p>Pressure: <strong>${data.pressure} mmHg</strong></p>
+                            <p>Pressure: <strong>${data.pressure.systolic}/${data.pressure.diastolic} mmHg</strong></p>
                             <div><img class="result-image" src="/static/${data.image_path}" alt="Processed Eye Image"></div>
                         `;
                         document.getElementById('alert-message').style.display = 'none';
         
-                        // Play the alert sound and show a popup message
                         const alertSound = document.getElementById('alert-sound');
                         alertSound.play();
                         alert(data.message);
@@ -146,10 +194,10 @@
                 });
             });
         </script>
+        
     </div>
 
     <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.2/dist/umd/popper.min.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
 </body>
-</html>
