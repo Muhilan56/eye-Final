@@ -71,7 +71,7 @@ def calculate_pressure(length, density):
 
 # Function to provide warnings based on pressure
 def get_pressure_warning(pressure):
-    if pressure > 18:
+    if pressure > 21:
         return "High Pressure", "danger"
     elif pressure < 12:
         return "Low Pressure", "warning"
